@@ -2,6 +2,7 @@ package projects
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -46,6 +47,18 @@ func TestWriteFilesPermissions(t *testing.T) {
 			dirInfo, statErr := os.Stat(projectDir)
 			require.NoError(t, statErr)
 			assert.Equal(t, os.FileMode(0o700), dirInfo.Mode().Perm())
+
+			if os.Geteuid() != 0 {
+				require.NoError(t, os.Chmod(composePath, 0o400))
+				writeErr := WriteComposeFile(t.Context(), projectsRoot, projectDir, "services: { updated: true }")
+				require.ErrorIs(t, writeErr, os.ErrPermission)
+				require.ErrorContains(t, writeErr, composePath)
+				require.ErrorContains(t, writeErr, fmt.Sprintf("uid %d, gid %d", os.Geteuid(), os.Getegid()))
+				require.ErrorContains(t, writeErr, "PUID/PGID")
+				content, readErr := os.ReadFile(composePath)
+				require.NoError(t, readErr)
+				assert.Equal(t, "services: {}", string(content))
+			}
 		}
 	})
 
